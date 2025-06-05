@@ -2017,24 +2017,53 @@ class IntegratedTradingSystemV2_4:
             vis_bundle_logger.error("Received invalid analysis_bundle (not a dict). Returning error bundle for visualization.")
             return {"error": "Invalid analysis_bundle type received by orchestrator for visualization."}
 
+        vis_bundle_logger.debug(f"Input analysis_bundle keys: {list(analysis_bundle_from_cycle.keys())}")
+
+        # Log keys of und_data_aggregates_CANONICAL_OBJ
+        und_data_aggregates = analysis_bundle_from_cycle.get("und_data_aggregates_CANONICAL_OBJ")
+        if isinstance(und_data_aggregates, dict):
+            vis_bundle_logger.debug(f"und_data_aggregates_CANONICAL_OBJ keys: {list(und_data_aggregates.keys())}")
+        else:
+            vis_bundle_logger.debug("und_data_aggregates_CANONICAL_OBJ is not a dict or not present.")
+
+        # Log number of active_recommendations_managed and keys of the first recommendation
+        active_recommendations = analysis_bundle_from_cycle.get("active_recommendations_managed")
+        if isinstance(active_recommendations, list):
+            vis_bundle_logger.debug(f"Number of active_recommendations_managed: {len(active_recommendations)}")
+            if active_recommendations:
+                first_reco = active_recommendations[0]
+                if isinstance(first_reco, dict):
+                    vis_bundle_logger.debug(f"First recommendation keys: {list(first_reco.keys())}")
+                else:
+                    vis_bundle_logger.debug(f"First recommendation is not a dict: {type(first_reco)}")
+        else:
+            vis_bundle_logger.debug("active_recommendations_managed is not a list or not present.")
+
+
         vis_bundle_output: Dict[str, Any] = {}
         for key, value in analysis_bundle_from_cycle.items():
             if isinstance(value, pd.DataFrame):
                 if not value.empty:
-                    try: 
+                    try:
+                        vis_bundle_logger.debug(f"Processing DataFrame '{key}' with original shape: {value.shape}")
                         # Replace Inf/-Inf with None (which becomes null in JSON)
                         # NaNs are handled by to_dict(orient='records') by default (often becoming null)
-                        df_copy_for_json = value.replace([np.inf, -np.inf], None) 
-                        vis_bundle_output[key] = df_copy_for_json.to_dict(orient='records')
+                        df_copy_for_json = value.replace([np.inf, -np.inf], None)
+                        converted_list = df_copy_for_json.to_dict(orient='records')
+                        vis_bundle_output[key] = converted_list
+                        vis_bundle_logger.debug(f"DataFrame '{key}' converted to list of {len(converted_list)} records.")
+                        if converted_list:
+                            vis_bundle_logger.debug(f"First 1 record of '{key}': {converted_list[:1]}")
                     except Exception as e_todict_vis:
                         vis_bundle_logger.error(f"Error serializing DataFrame '{key}' to dict: {e_todict_vis}", exc_info=True)
                         vis_bundle_output[key] = [{"error_serialization": str(e_todict_vis)}] # Return error in list
-                else: 
+                else:
+                    vis_bundle_logger.debug(f"DataFrame '{key}' is empty. Converting to empty list.")
                     vis_bundle_output[key] = [] # Empty list for empty DataFrame
-            elif isinstance(value, dict): 
+            elif isinstance(value, dict):
                 # Recursively clean dicts (though less common to have DataFrames nested deeply here)
                 vis_bundle_output[key] = self.get_visualization_data_bundle(value) if key != "config_snapshot_info" else value.copy()
-            elif isinstance(value, list): 
+            elif isinstance(value, list):
                  # Check if list contains DataFrames (less common at top level of bundle, but possible)
                 cleaned_list = []
                 contains_df = False
