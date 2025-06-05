@@ -113,7 +113,7 @@ else:
 app = dash.Dash(
     __name__,
     external_stylesheets=[APP_THEME_APPMAIN, dbc.icons.BOOTSTRAP, dbc.icons.FONT_AWESOME],
-    suppress_callback_exceptions=True,
+    suppress_callback_exceptions=False,
     meta_tags=[{"name": "viewport", "content": "width=device-width, initial-scale=1"}],
     assets_folder=str(assets_path), 
     title="EOTS V2.4 Dashboard (Loading...)" 
