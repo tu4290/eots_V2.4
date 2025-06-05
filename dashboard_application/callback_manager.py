@@ -347,56 +347,120 @@ def register_all_callbacks(
         callback_logger.debug(f"MASTER_CB: Returning. status_msg type: {type(status_msg)}, layout_to_render type: {type(layout_to_render)}")
         return main_data_output, status_msg, layout_to_render # Removed status_open
 
-    if prerequisites_met and ALL_DYNAMIC_CHART_IDS:
-        for chart_id_for_factory in ALL_DYNAMIC_CHART_IDS:
-            if not isinstance(chart_id_for_factory, str):
-                callback_logger.warning(f"Skipping dynamic chart callback registration for non-string ID: {chart_id_for_factory}")
-                continue
-            @app.callback(Output(chart_id_for_factory, 'children'), Input(ID_MAIN_DATA_STORE_MEMORY, 'data'), Input(ID_CURRENT_MODE_STORE, 'data'))
-            def generate_dynamic_chart_content_factory(main_store_data: Optional[Dict[str, Any]], mode_store_data: Optional[Dict[str, Optional[str]]], chart_id_closure: str = chart_id_for_factory) -> Any:
-                active_mode = (mode_store_data.get('active_mode') if mode_store_data else None) or "main"
-                callback_logger.info(f"DYNAMIC_CHART_CB: Triggered for chart_id: '{chart_id_closure}', active_mode: '{active_mode}'.")
+    # --- START: DIAGNOSTIC TEST - Comment out dynamic loop and add explicit callback ---
+    # if prerequisites_met and ALL_DYNAMIC_CHART_IDS:
+    #     for chart_id_for_factory in ALL_DYNAMIC_CHART_IDS:
+    #         if not isinstance(chart_id_for_factory, str):
+    #             callback_logger.warning(f"Skipping dynamic chart callback registration for non-string ID: {chart_id_for_factory}")
+    #             continue
+    #         @app.callback(Output(chart_id_for_factory, 'children'), Input(ID_MAIN_DATA_STORE_MEMORY, 'data'), Input(ID_CURRENT_MODE_STORE, 'data'))
+    #         def generate_dynamic_chart_content_factory(main_store_data: Optional[Dict[str, Any]], mode_store_data: Optional[Dict[str, Optional[str]]], chart_id_closure: str = chart_id_for_factory) -> Any:
+    #             active_mode = (mode_store_data.get('active_mode') if mode_store_data else None) or "main"
+    #             callback_logger.info(f"DYNAMIC_CHART_CB: Triggered for chart_id: '{chart_id_closure}', active_mode: '{active_mode}'.")
 
-                if not main_store_data:
-                    callback_logger.warning(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): No main_store_data available. Returning empty figure.")
-                    return html.Div(create_empty_figure_util(title=f"{chart_id_closure.replace('_', ' ').title()}", reason="No data in main store."))
-
-                store_error = main_store_data.get("error")
-                if store_error:
-                    callback_logger.warning(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Main store data contains an error: '{store_error}'. Returning empty figure.")
-                    return html.Div(create_empty_figure_util(title=f"{chart_id_closure.replace('_', ' ').title()}", reason=f"Store Error: {store_error}"))
+    #             if not main_store_data:
+    #                 callback_logger.warning(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): No main_store_data available. Returning empty figure.")
+    #                 return html.Div(create_empty_figure_util(title=f"{chart_id_closure.replace('_', ' ').title()}", reason="No data in main store."))
                 
-                callback_logger.debug(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Main store data available and no error found in store.")
-
-                generator_function: Optional[Callable] = None
-                if active_mode in CHART_GENERATOR_MAP_V2_4 and chart_id_closure in CHART_GENERATOR_MAP_V2_4[active_mode]:
-                    generator_function = CHART_GENERATOR_MAP_V2_4[active_mode][chart_id_closure]
+    #             store_error = main_store_data.get("error")
+    #             if store_error:
+    #                 callback_logger.warning(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Main store data contains an error: '{store_error}'. Returning empty figure.")
+    #                 return html.Div(create_empty_figure_util(title=f"{chart_id_closure.replace('_', ' ').title()}", reason=f"Store Error: {store_error}"))
                 
-                if generator_function and callable(generator_function):
-                    generator_name = getattr(generator_function, '__name__', 'Unnamed Generator')
-                    callback_logger.info(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Found generator '{generator_name}'. Attempting to generate chart content.")
-                    try:
-                        chart_content = generator_function(analysis_bundle=main_store_data, its_orch_ref=_ITS_ORCHESTRATOR_REF_CB, config_manager_ref=_CONFIG_MANAGER_REF_CB, raw_config_ref=_RAW_APP_CONFIG_REF_CB, chart_id=chart_id_closure)
-                        callback_logger.info(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Generator '{generator_name}' returned content of type: {type(chart_content)}.")
+    #             callback_logger.debug(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Main store data available and no error found in store.")
 
-                        if isinstance(chart_content, dash.dcc.Graph):
-                            fig_data_type = "No data"
-                            if chart_content.figure and chart_content.figure.get('data') and len(chart_content.figure['data']) > 0:
-                                fig_data_type = chart_content.figure['data'][0].get('type', 'Unknown type')
-                            callback_logger.debug(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Content is dcc.Graph. Figure data[0] type: {fig_data_type}. Structure: {chart_content.figure.keys() if chart_content.figure else 'No figure'}")
-                        elif isinstance(chart_content, html.Div) and hasattr(chart_content, 'children') and isinstance(chart_content.children, str):
-                            callback_logger.debug(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Content is html.Div with string children. Snippet: '{chart_content.children[:100]}'")
+    #             generator_function: Optional[Callable] = None
+    #             if active_mode in CHART_GENERATOR_MAP_V2_4 and chart_id_closure in CHART_GENERATOR_MAP_V2_4[active_mode]:
+    #                 generator_function = CHART_GENERATOR_MAP_V2_4[active_mode][chart_id_closure]
 
-                        return chart_content
-                    except Exception as e_chart_gen:
-                        error_message_for_user = f"Error generating chart '{chart_id_closure}': {str(e_chart_gen)[:100]}"
-                        callback_logger.error(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Error in generator '{generator_name}' for mode '{active_mode}': {e_chart_gen}", exc_info=True)
-                        # Ensure the error message passed to create_empty_figure_util is logged
-                        callback_logger.error(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Logging error for display: {error_message_for_user}")
-                        return html.Div(create_empty_figure_util(title=f"{chart_id_closure.replace('_', ' ').title()}", reason=error_message_for_user))
-                else:
-                    callback_logger.warning(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): No generator function found for mode '{active_mode}'. Returning empty Div.")
-                    return html.Div(f"No chart generator for ID '{chart_id_closure}' in mode '{active_mode}'.")
+    #             if generator_function and callable(generator_function):
+    #                 generator_name = getattr(generator_function, '__name__', 'Unnamed Generator')
+    #                 callback_logger.info(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Found generator '{generator_name}'. Attempting to generate chart content.")
+    #                 try:
+    #                     chart_content = generator_function(analysis_bundle=main_store_data, its_orch_ref=_ITS_ORCHESTRATOR_REF_CB, config_manager_ref=_CONFIG_MANAGER_REF_CB, raw_config_ref=_RAW_APP_CONFIG_REF_CB, chart_id=chart_id_closure)
+    #                     callback_logger.info(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Generator '{generator_name}' returned content of type: {type(chart_content)}.")
+
+    #                     if isinstance(chart_content, dash.dcc.Graph):
+    #                         fig_data_type = "No data"
+    #                         if chart_content.figure and chart_content.figure.get('data') and len(chart_content.figure['data']) > 0:
+    #                             fig_data_type = chart_content.figure['data'][0].get('type', 'Unknown type')
+    #                         callback_logger.debug(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Content is dcc.Graph. Figure data[0] type: {fig_data_type}. Structure: {chart_content.figure.keys() if chart_content.figure else 'No figure'}")
+    #                     elif isinstance(chart_content, html.Div) and hasattr(chart_content, 'children') and isinstance(chart_content.children, str):
+    #                         callback_logger.debug(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Content is html.Div with string children. Snippet: '{chart_content.children[:100]}'")
+
+    #                     return chart_content
+    #                 except Exception as e_chart_gen:
+    #                     error_message_for_user = f"Error generating chart '{chart_id_closure}': {str(e_chart_gen)[:100]}"
+    #                     callback_logger.error(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Error in generator '{generator_name}' for mode '{active_mode}': {e_chart_gen}", exc_info=True)
+    #                     # Ensure the error message passed to create_empty_figure_util is logged
+    #                     callback_logger.error(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Logging error for display: {error_message_for_user}")
+    #                     return html.Div(create_empty_figure_util(title=f"{chart_id_closure.replace('_', ' ').title()}", reason=error_message_for_user))
+    #             else:
+    #                 callback_logger.warning(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): No generator function found for mode '{active_mode}'. Returning empty Div.")
+    #                 return html.Div(f"No chart generator for ID '{chart_id_closure}' in mode '{active_mode}'.")
+    # else:
+    #     callback_logger.warning("CallbackManager: ALL_DYNAMIC_CHART_IDS is empty or prerequisites not met. No dynamic chart update callbacks registered via factory.")
+
+    # Explicit callback for ID_MARKET_REGIME_INDICATOR_DISPLAY
+    # Ensure ID_MARKET_REGIME_INDICATOR_DISPLAY is imported or defined correctly.
+    # For this example, we'll assume it's available from ids_module_ref if _ids_imported_ok_cb_flag is True
+    id_market_regime_indicator_display_val = getattr(ids_module_ref, 'ID_MARKET_REGIME_INDICATOR_DISPLAY', 'fallback_id_market_regime_indicator_display') if _ids_imported_ok_cb_flag else 'fallback_id_market_regime_indicator_display_no_ids_mod'
+
+    if _APP_INSTANCE_REF_CB and prerequisites_met and id_market_regime_indicator_display_val:
+        callback_logger.info(f"CallbackManager: Explicitly registering callback for {id_market_regime_indicator_display_val}")
+        @_APP_INSTANCE_REF_CB.callback(
+            Output(id_market_regime_indicator_display_val, 'children'),
+            Input(ID_MAIN_DATA_STORE_MEMORY, 'data'),
+            Input(ID_CURRENT_MODE_STORE, 'data')
+        )
+        def generate_single_market_regime_chart_content(
+            main_store_data: Optional[Dict[str, Any]],
+            mode_store_data: Optional[Dict[str, Optional[str]]]
+        ):
+            chart_id_closure = id_market_regime_indicator_display_val # Specific ID for this test
+
+            active_mode = "main" # Default
+            if isinstance(mode_store_data, dict):
+                active_mode = mode_store_data.get('active_mode', "main")
+            elif isinstance(mode_store_data, str) and mode_store_data:
+                active_mode = mode_store_data
+
+            callback_logger.debug(f"DYNAMIC_CHART_CB (Explicit Test for {chart_id_closure}) triggered. Active Mode: '{active_mode}'. Store data available: {main_store_data is not None}.")
+
+            if not main_store_data or main_store_data.get("error"):
+                error_reason = main_store_data.get('error', 'No data in store') if main_store_data else 'Main store data is None'
+                callback_logger.warning(f"DYNAMIC_CHART_CB ('{chart_id_closure}') (Explicit Test): Main store has error or no data. Error: {error_reason}.")
+                return html.Div(utils.create_empty_figure(title=f"{chart_id_closure.replace('_', ' ').title()}", reason=error_reason))
+
+            generator_function: Optional[Callable] = None
+            if active_mode in CHART_GENERATOR_MAP_V2_4 and chart_id_closure in CHART_GENERATOR_MAP_V2_4[active_mode]:
+                generator_function = CHART_GENERATOR_MAP_V2_4[active_mode][chart_id_closure]
+
+            if generator_function and callable(generator_function):
+                generator_func_name = getattr(generator_function, '__name__', 'UnknownGenerator')
+                callback_logger.debug(f"DYNAMIC_CHART_CB ('{chart_id_closure}') (Explicit Test): Found generator {generator_func_name}. Attempting to generate chart content.")
+                try:
+                    chart_content = generator_function(
+                        analysis_bundle=main_store_data,
+                        its_orch_ref=_ITS_ORCHESTRATOR_REF_CB,
+                        config_manager_ref=_CONFIG_MANAGER_REF_CB,
+                        raw_config_ref=_RAW_APP_CONFIG_REF_CB,
+                        chart_id=chart_id_closure
+                    )
+
+                    content_type_log_msg = f"DYNAMIC_CHART_CB ('{chart_id_closure}') (Explicit Test): Generator returned content of type: {type(chart_content)}."
+                    callback_logger.debug(content_type_log_msg)
+                    return chart_content
+                except Exception as e_chart_gen:
+                    error_msg_gen = f"Error generating chart for mode '{active_mode}', chart '{chart_id_closure}' (Explicit Test): {str(e_chart_gen)[:150]}"
+                    callback_logger.error(error_msg_gen, exc_info=True)
+                    return html.Div(utils.create_empty_figure(title=f"{chart_id_closure.replace('_', ' ').title()}", reason=error_msg_gen))
+            else:
+                no_gen_msg = f"DYNAMIC_CHART_CB ('{chart_id_closure}') (Explicit Test): No generator function found for mode '{active_mode}'. Returning empty Div."
+                callback_logger.warning(no_gen_msg)
+                return html.Div(no_gen_msg)
     else:
-        callback_logger.warning("CallbackManager: ALL_DYNAMIC_CHART_IDS is empty or prerequisites not met. No dynamic chart update callbacks registered via factory.")
+        callback_logger.warning(f"CallbackManager: Explicit registration for {id_market_regime_indicator_display_val} SKIPPED as _APP_INSTANCE_REF_CB or prerequisites_met is False, or ID not found.")
+    # --- END: DIAGNOSTIC TEST ---
+
     callback_logger.info("V2.4 Callback registration process finalized.")
