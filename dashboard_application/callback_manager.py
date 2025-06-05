@@ -311,7 +311,11 @@ def register_all_callbacks(
             status_msg = format_status_message_enhanced_util(f"Data for {symbol_val} processed successfully.", is_error=False, timestamp=current_time)
             
             if triggered_id == "initial_load_via_hidden_div" and build_dynamic_mode_layout_func_ref:
-                active_mode = (current_mode_store_data.get('active_mode') if current_mode_store_data else None) or "main"
+                active_mode = "main" # Default
+                if isinstance(current_mode_store_data, dict):
+                    active_mode = current_mode_store_data.get('active_mode', "main")
+                elif isinstance(current_mode_store_data, str) and current_mode_store_data:
+                    active_mode = current_mode_store_data
                 callback_logger.debug(f"MASTER_CB (Initial Load): Attempting to build initial layout for mode '{active_mode}'.")
                 layout_to_render = build_dynamic_mode_layout_func_ref(active_mode, app_config_for_layout=_RAW_APP_CONFIG_REF_CB)
                 layout_render_log_info = f"Initial layout type: {type(layout_to_render)}"
