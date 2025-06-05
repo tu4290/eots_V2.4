@@ -1475,7 +1475,7 @@ class IntegratedTradingSystemV2_4:
         
         cycle_logger.info(f"[{symbol}] Step 9: Storing Historical Data...")
         # --- Step 9: Storing Historical Data (with toggle) ---
-        if self.historical_data_manager and component_activation_cfg.get("historical_data_storage_active", True):
+        if self.historical_data_manager and self.config_manager.get_setting(["system_settings", "historical_data_manager_activation", "enable_ohlcv_storage"], default_value_to_return=True):
             cycle_logger.info(f"[{symbol}] Step 9: Storing Historical Data (Activated)...") # Log that it's active
 
             # Store daily metrics
