@@ -405,11 +405,13 @@ def register_all_callbacks(
     # Ensure ID_MARKET_REGIME_INDICATOR_DISPLAY is imported or defined correctly.
     # For this example, we'll assume it's available from ids_module_ref if _ids_imported_ok_cb_flag is True
     id_market_regime_indicator_display_val = getattr(ids_module_ref, 'ID_MARKET_REGIME_INDICATOR_DISPLAY', 'fallback_id_market_regime_indicator_display') if _ids_imported_ok_cb_flag else 'fallback_id_market_regime_indicator_display_no_ids_mod'
+    # Ensure ID_STATUS_DISPLAY_AREA is available
+    id_status_display_area_val = getattr(ids_module_ref, 'ID_STATUS_DISPLAY_AREA', 'fallback_id_status_display_area') if _ids_imported_ok_cb_flag else 'fallback_id_status_display_area_no_ids_mod'
 
-    if _APP_INSTANCE_REF_CB and prerequisites_met and id_market_regime_indicator_display_val:
-        callback_logger.info(f"CallbackManager: Explicitly registering callback for {id_market_regime_indicator_display_val}")
+    if _APP_INSTANCE_REF_CB and prerequisites_met and id_market_regime_indicator_display_val and id_status_display_area_val:
+        callback_logger.info(f"CallbackManager: Explicitly registering callback for {id_market_regime_indicator_display_val} to output to {id_status_display_area_val}")
         @_APP_INSTANCE_REF_CB.callback(
-            Output(id_market_regime_indicator_display_val, 'children'),
+            Output(id_status_display_area_val, 'children'), # Changed Output
             Input(ID_MAIN_DATA_STORE_MEMORY, 'data'),
             Input(ID_CURRENT_MODE_STORE, 'data')
         )
@@ -417,7 +419,8 @@ def register_all_callbacks(
             main_store_data: Optional[Dict[str, Any]],
             mode_store_data: Optional[Dict[str, Optional[str]]]
         ):
-            chart_id_closure = id_market_regime_indicator_display_val # Specific ID for this test
+            # Using id_market_regime_indicator_display_val for chart_id_closure for logging consistency with original intent
+            chart_id_closure = id_market_regime_indicator_display_val
 
             active_mode = "main" # Default
             if isinstance(mode_store_data, dict):
@@ -425,42 +428,33 @@ def register_all_callbacks(
             elif isinstance(mode_store_data, str) and mode_store_data:
                 active_mode = mode_store_data
 
-            callback_logger.debug(f"DYNAMIC_CHART_CB (Explicit Test for {chart_id_closure}) triggered. Active Mode: '{active_mode}'. Store data available: {main_store_data is not None}.")
+            triggered_by = ctx.triggered_id if ctx.triggered_id else "Unknown trigger"
+            log_message = (
+                f"DYNAMIC_CHART_CB (Explicit Test for {chart_id_closure}, Outputting to Status Area) "
+                f"triggered by {triggered_by}. Active Mode: '{active_mode}'. "
+                f"Store data available: {main_store_data is not None}."
+            )
+            callback_logger.info(log_message)
 
-            if not main_store_data or main_store_data.get("error"):
-                error_reason = main_store_data.get('error', 'No data in store') if main_store_data else 'Main store data is None'
-                callback_logger.warning(f"DYNAMIC_CHART_CB ('{chart_id_closure}') (Explicit Test): Main store has error or no data. Error: {error_reason}.")
-                return html.Div(utils.create_empty_figure(title=f"{chart_id_closure.replace('_', ' ').title()}", reason=error_reason))
+            if not main_store_data:
+                return html.Div(f"Explicit test for {chart_id_closure}: Main store data is None. Trigger: {triggered_by}. Time: {datetime.now().isoformat()}")
 
-            generator_function: Optional[Callable] = None
-            if active_mode in CHART_GENERATOR_MAP_V2_4 and chart_id_closure in CHART_GENERATOR_MAP_V2_4[active_mode]:
-                generator_function = CHART_GENERATOR_MAP_V2_4[active_mode][chart_id_closure]
+            store_error = main_store_data.get("error")
+            if store_error:
+                return html.Div(f"Explicit test for {chart_id_closure}: Main store has error: {store_error}. Trigger: {triggered_by}. Time: {datetime.now().isoformat()}")
 
-            if generator_function and callable(generator_function):
-                generator_func_name = getattr(generator_function, '__name__', 'UnknownGenerator')
-                callback_logger.debug(f"DYNAMIC_CHART_CB ('{chart_id_closure}') (Explicit Test): Found generator {generator_func_name}. Attempting to generate chart content.")
-                try:
-                    chart_content = generator_function(
-                        analysis_bundle=main_store_data,
-                        its_orch_ref=_ITS_ORCHESTRATOR_REF_CB,
-                        config_manager_ref=_CONFIG_MANAGER_REF_CB,
-                        raw_config_ref=_RAW_APP_CONFIG_REF_CB,
-                        chart_id=chart_id_closure
-                    )
-
-                    content_type_log_msg = f"DYNAMIC_CHART_CB ('{chart_id_closure}') (Explicit Test): Generator returned content of type: {type(chart_content)}."
-                    callback_logger.debug(content_type_log_msg)
-                    return chart_content
-                except Exception as e_chart_gen:
-                    error_msg_gen = f"Error generating chart for mode '{active_mode}', chart '{chart_id_closure}' (Explicit Test): {str(e_chart_gen)[:150]}"
-                    callback_logger.error(error_msg_gen, exc_info=True)
-                    return html.Div(utils.create_empty_figure(title=f"{chart_id_closure.replace('_', ' ').title()}", reason=error_msg_gen))
-            else:
-                no_gen_msg = f"DYNAMIC_CHART_CB ('{chart_id_closure}') (Explicit Test): No generator function found for mode '{active_mode}'. Returning empty Div."
-                callback_logger.warning(no_gen_msg)
-                return html.Div(no_gen_msg)
+            # Instead of calling chart generator, return a simple string
+            test_message = f"SUCCESS: Explicit test callback for {chart_id_closure} (mode: {active_mode}) fired at {datetime.now().isoformat()} due to {triggered_by}!"
+            callback_logger.info(test_message)
+            return html.Div(test_message)
     else:
-        callback_logger.warning(f"CallbackManager: Explicit registration for {id_market_regime_indicator_display_val} SKIPPED as _APP_INSTANCE_REF_CB or prerequisites_met is False, or ID not found.")
+        callback_logger.warning(
+            f"CallbackManager: Explicit registration for {id_market_regime_indicator_display_val} to {id_status_display_area_val} SKIPPED. "
+            f"App instance valid: {_APP_INSTANCE_REF_CB is not None}. "
+            f"Prerequisites met: {prerequisites_met}. "
+            f"Market Regime ID valid: {id_market_regime_indicator_display_val is not None}. "
+            f"Status Area ID valid: {id_status_display_area_val is not None}."
+        )
     # --- END: DIAGNOSTIC TEST ---
 
     callback_logger.info("V2.4 Callback registration process finalized.")
