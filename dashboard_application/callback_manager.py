@@ -361,7 +361,7 @@ def register_all_callbacks(
     #             if not main_store_data:
     #                 callback_logger.warning(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): No main_store_data available. Returning empty figure.")
     #                 return html.Div(create_empty_figure_util(title=f"{chart_id_closure.replace('_', ' ').title()}", reason="No data in main store."))
-                
+
     #             store_error = main_store_data.get("error")
     #             if store_error:
     #                 callback_logger.warning(f"DYNAMIC_CHART_CB ('{chart_id_closure}'): Main store data contains an error: '{store_error}'. Returning empty figure.")
@@ -405,55 +405,60 @@ def register_all_callbacks(
     # Ensure ID_MARKET_REGIME_INDICATOR_DISPLAY is imported or defined correctly.
     # For this example, we'll assume it's available from ids_module_ref if _ids_imported_ok_cb_flag is True
     id_market_regime_indicator_display_val = getattr(ids_module_ref, 'ID_MARKET_REGIME_INDICATOR_DISPLAY', 'fallback_id_market_regime_indicator_display') if _ids_imported_ok_cb_flag else 'fallback_id_market_regime_indicator_display_no_ids_mod'
-    # Ensure ID_STATUS_DISPLAY_AREA is available
     id_status_display_area_val = getattr(ids_module_ref, 'ID_STATUS_DISPLAY_AREA', 'fallback_id_status_display_area') if _ids_imported_ok_cb_flag else 'fallback_id_status_display_area_no_ids_mod'
+    id_fetch_data_button_val = getattr(ids_module_ref, 'ID_FETCH_DATA_BUTTON', 'fallback_id_fetch_data_button') if _ids_imported_ok_cb_flag else 'fallback_id_fetch_data_button_no_ids_mod'
+    id_symbol_input_val = getattr(ids_module_ref, 'ID_SYMBOL_INPUT', 'fallback_id_symbol_input') if _ids_imported_ok_cb_flag else 'fallback_id_symbol_input_no_ids_mod'
+    id_current_mode_store_val = getattr(ids_module_ref, 'ID_CURRENT_MODE_STORE', 'fallback_id_current_mode_store') if _ids_imported_ok_cb_flag else 'fallback_id_current_mode_store_no_ids_mod'
 
-    if _APP_INSTANCE_REF_CB and prerequisites_met and id_market_regime_indicator_display_val and id_status_display_area_val:
-        callback_logger.info(f"CallbackManager: Explicitly registering callback for {id_market_regime_indicator_display_val} to output to {id_status_display_area_val}")
+
+    if _APP_INSTANCE_REF_CB and prerequisites_met and id_market_regime_indicator_display_val and id_status_display_area_val and id_fetch_data_button_val and id_symbol_input_val and id_current_mode_store_val:
+        callback_logger.info(f"CallbackManager: Explicitly registering BUTTON-TRIGGERED test callback (orig_chart_id: {id_market_regime_indicator_display_val}) to output to {id_status_display_area_val}")
         @_APP_INSTANCE_REF_CB.callback(
-            Output(id_status_display_area_val, 'children'), # Changed Output
-            Input(ID_MAIN_DATA_STORE_MEMORY, 'data'),
-            Input(ID_CURRENT_MODE_STORE, 'data')
+            Output(id_status_display_area_val, 'children'),    # Outputting to status area
+            Input(id_fetch_data_button_val, 'n_clicks'),       # INPUT IS NOW THE BUTTON
+            State(id_current_mode_store_val, 'data'),
+            State(id_symbol_input_val, 'value')                # Added state for symbol
         )
-        def generate_single_market_regime_chart_content(
-            main_store_data: Optional[Dict[str, Any]],
-            mode_store_data: Optional[Dict[str, Optional[str]]]
+        def explicit_button_triggered_diagnostic_callback(
+            n_clicks: Optional[int],
+            mode_store_data: Optional[Dict[str, Optional[str]]], # This is a State
+            symbol_value: Optional[str]                          # This is a State
         ):
-            # Using id_market_regime_indicator_display_val for chart_id_closure for logging consistency with original intent
+            # Using id_market_regime_indicator_display_val for chart_id_closure for logging consistency
             chart_id_closure = id_market_regime_indicator_display_val
+
+            if n_clicks is None or n_clicks == 0: # Don't fire on initial load or if n_clicks is 0
+                return no_update
 
             active_mode = "main" # Default
             if isinstance(mode_store_data, dict):
                 active_mode = mode_store_data.get('active_mode', "main")
-            elif isinstance(mode_store_data, str) and mode_store_data:
+            elif isinstance(mode_store_data, str) and mode_store_data: # Handle if mode_store_data is just a string
                 active_mode = mode_store_data
 
             triggered_by = ctx.triggered_id if ctx.triggered_id else "Unknown trigger"
-            log_message = (
-                f"DYNAMIC_CHART_CB (Explicit Test for {chart_id_closure}, Outputting to Status Area) "
-                f"triggered by {triggered_by}. Active Mode: '{active_mode}'. "
-                f"Store data available: {main_store_data is not None}."
+
+            diag_message = (
+                f"SUCCESS: Button-triggered test callback fired for chart_id_context='{chart_id_closure}', "
+                f"Symbol='{symbol_value or 'N/A'}', Mode='{active_mode}', "
+                f"Timestamp='{datetime.now().isoformat()}', Trigger='{triggered_by}', Clicks='{n_clicks}'"
             )
-            callback_logger.info(log_message)
+            callback_logger.info(diag_message)
 
-            if not main_store_data:
-                return html.Div(f"Explicit test for {chart_id_closure}: Main store data is None. Trigger: {triggered_by}. Time: {datetime.now().isoformat()}")
-
-            store_error = main_store_data.get("error")
-            if store_error:
-                return html.Div(f"Explicit test for {chart_id_closure}: Main store has error: {store_error}. Trigger: {triggered_by}. Time: {datetime.now().isoformat()}")
-
-            # Instead of calling chart generator, return a simple string
-            test_message = f"SUCCESS: Explicit test callback for {chart_id_closure} (mode: {active_mode}) fired at {datetime.now().isoformat()} due to {triggered_by}!"
-            callback_logger.info(test_message)
-            return html.Div(test_message)
+            return html.Div(diag_message)
     else:
+        # Enhanced logging for why the callback might be skipped
+        details = (
+            f"App instance valid: {_APP_INSTANCE_REF_CB is not None}, "
+            f"Prerequisites met: {prerequisites_met}, "
+            f"Market Regime ID valid: {id_market_regime_indicator_display_val is not None}, "
+            f"Status Area ID valid: {id_status_display_area_val is not None}, "
+            f"Fetch Button ID valid: {id_fetch_data_button_val is not None}, "
+            f"Symbol Input ID valid: {id_symbol_input_val is not None}, "
+            f"Current Mode Store ID valid: {id_current_mode_store_val is not None}."
+        )
         callback_logger.warning(
-            f"CallbackManager: Explicit registration for {id_market_regime_indicator_display_val} to {id_status_display_area_val} SKIPPED. "
-            f"App instance valid: {_APP_INSTANCE_REF_CB is not None}. "
-            f"Prerequisites met: {prerequisites_met}. "
-            f"Market Regime ID valid: {id_market_regime_indicator_display_val is not None}. "
-            f"Status Area ID valid: {id_status_display_area_val is not None}."
+            f"CallbackManager: Explicit BUTTON-TRIGGERED registration for context {id_market_regime_indicator_display_val} -> {id_status_display_area_val} SKIPPED. Details: {details}"
         )
     # --- END: DIAGNOSTIC TEST ---
 
