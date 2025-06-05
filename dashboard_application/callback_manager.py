@@ -460,24 +460,106 @@ def register_all_callbacks(
     #     )
     # --- END: DIAGNOSTIC TEST ---
 
-    # Minimal diagnostic callback
+    # Restore and Modify fetch_and_process_data_master_callback
     if _APP_INSTANCE_REF_CB: # Check if app instance is available
-        callback_logger.info("Registering MINIMAL DIAGNOSTIC button-to-status callback.")
+        callback_logger.info("Registering MODIFIED fetch_and_process_data_master_callback for diagnostic store test.")
         @_APP_INSTANCE_REF_CB.callback(
-            Output(ids_module_ref.ID_STATUS_DISPLAY_AREA, 'children'), # Using ids_module_ref directly
-            Input(ids_module_ref.ID_FETCH_DATA_BUTTON, 'n_clicks'),   # Using ids_module_ref directly
+            Output(ID_MAIN_DATA_STORE_MEMORY, 'data'), Output(ID_STATUS_DISPLAY_AREA, 'children'),
+            Output(ID_MAIN_CONTENT_AREA, 'children', allow_duplicate=True),
+            Input(ID_FETCH_DATA_BUTTON, 'n_clicks'), Input(ID_AUTO_REFRESH_INTERVAL_COMPONENT, 'n_intervals'),
+            Input(ID_HIDDEN_INITIAL_LOAD_TRIGGER, 'children'),
+            State(ID_SYMBOL_INPUT, 'value'), State(ID_DTE_INPUT, 'value'),
+            State(ID_RANGE_SLIDER, 'value'), State(ID_CURRENT_MODE_STORE, 'data'),
+            prevent_initial_call='initial_duplicate'
+        )
+        def fetch_and_process_data_master_callback(
+            n_clicks_fetch: Optional[int], n_intervals_refresh: Optional[int], _initial_load_trigger: Any,
+            symbol_val: Optional[str], dte_str_val: Optional[str], range_pct_val: Optional[float],
+            current_mode_store_data: Optional[Dict[str, Optional[str]]]
+        ) -> Tuple[Optional[Dict[str, Any]], Any, Any]:
+            callback_logger.info(
+                f"MASTER_CB (Modified for Store Test) triggered. ID: {ctx.triggered_id}, Symbol: {symbol_val}, "
+                f"DTE: {dte_str_val}, Clicks: {n_clicks_fetch}"
+            )
+            triggered_id = ctx.triggered_id if ctx.triggered_id else "initial_load_via_hidden_div"
+            status_msg: Any = format_status_message_enhanced_util(f"Fetching for {symbol_val}...", is_error=False) # Default status
+            layout_to_render: Any = no_update # Default layout
+
+            if not symbol_val:
+                callback_logger.warning("MASTER_CB (Modified for Store Test): No symbol. Storing minimal error data.")
+                simple_store_data = {
+                    'timestamp': datetime.now().isoformat(),
+                    'status': 'MASTER_CB_error_no_symbol',
+                    'symbol_processed': None,
+                    'trigger_id_master_cb': triggered_id,
+                    'error_detail': "Symbol is required."
+                }
+                return simple_store_data, format_status_message_enhanced_util("Symbol is required.", is_error=True), no_update
+
+            # Minimal processing just to get to the point of storing data
+            try:
+                # Simulate some work or specific conditions if needed for the test
+                callback_logger.info(f"MASTER_CB (Modified for Store Test): Simulating processing for {symbol_val}.")
+
+                # For this diagnostic test, override main_data_output with simple data
+                simple_store_data = {
+                    'timestamp': datetime.now().isoformat(),
+                    'status': 'MASTER_CB_fired_and_stored_SIMPLE_data',
+                    'symbol_processed': symbol_val,
+                    'trigger_id_master_cb': triggered_id,
+                    'data_payload': {"value1": 123, "message": f"Test data for {symbol_val}"}
+                }
+                main_data_output = simple_store_data # THIS IS THE OVERRIDE
+
+                status_msg = format_status_message_enhanced_util(f"MASTER_CB (Modified for Store Test) processed {symbol_val}. Storing SIMPLE test data.", is_error=False, timestamp=datetime.now())
+                callback_logger.info(f"MASTER_CB (Modified for Store Test): OVERRIDING store data with SIMPLE test data for {symbol_val}: {list(main_data_output.keys())}")
+
+            except Exception as e:
+                callback_logger.error(f"MASTER_CB (Modified for Store Test): Error for {symbol_val}: {e}", exc_info=True)
+                status_msg = format_status_message_enhanced_util(f"Error in MASTER_CB (Store Test) for {symbol_val}: {str(e)[:100]}", is_error=True, timestamp=datetime.now())
+                main_data_output = {
+                    'timestamp': datetime.now().isoformat(),
+                    'status': 'MASTER_CB_exception',
+                    'symbol_processed': symbol_val,
+                    'trigger_id_master_cb': triggered_id,
+                    'error_detail': str(e)
+                }
+
+            return main_data_output, status_msg, layout_to_render
+    else:
+        callback_logger.error("CallbackManager: _APP_INSTANCE_REF_CB is None. Cannot register fetch_and_process_data_master_callback (Modified).")
+
+
+    # Repurpose the Minimal Test Callback to be the Diagnostic Store Test Callback
+    if _APP_INSTANCE_REF_CB: # Check if app instance is available
+        callback_logger.info("Registering DIAGNOSTIC STORE TEST callback (was minimal_button_test_callback).")
+        @_APP_INSTANCE_REF_CB.callback(
+            Output(ids_module_ref.ID_STATUS_DISPLAY_AREA, 'children', allow_duplicate=True), # Keep allow_duplicate if MASTER_CB also outputs here
+            Input(ids_module_ref.ID_MAIN_DATA_STORE_MEMORY, 'data'),
             prevent_initial_call=True
         )
-        def minimal_button_test_callback(n_clicks: Optional[int]):
-            if n_clicks is None or n_clicks == 0:
-                callback_logger.info("Minimal button test callback: n_clicks is None or 0, returning no_update.")
-                return no_update
+        def diagnostic_store_test_callback(store_data: Optional[Dict[str, Any]]):
+            if store_data is None:
+                callback_logger.info("Diagnostic Store Test Callback: store_data is None.")
+                return dash.no_update # Use dash.no_update
 
-            triggered_by = ctx.triggered_id if ctx.triggered_id else "Unknown trigger"
-            test_message = f"MINIMAL BUTTON TEST FIRED at {datetime.now().isoformat()} by {triggered_by}, Clicks: {n_clicks}"
+            triggered_by = ctx.triggered_id if ctx.triggered_id else "Unknown trigger" # Should be ID_MAIN_DATA_STORE_MEMORY
+
+            # Construct message from store_data content
+            retrieved_status = store_data.get('status', 'N/A')
+            retrieved_symbol = store_data.get('symbol_processed', 'N/A')
+            retrieved_ts = store_data.get('timestamp', 'N/A')
+
+            test_message = (
+                f"STORE TEST SUCCESS: Triggered by {triggered_by} at {datetime.now().isoformat()}. "
+                f"Data from store (ts: {retrieved_ts}): Status='{retrieved_status}', Symbol='{retrieved_symbol}'. "
+                f"Full store keys: {list(store_data.keys()) if store_data else 'None'}"
+            )
             callback_logger.info(test_message)
+            # Prepend to allow MASTER_CB to also write here without being overwritten immediately
+            # Or, ensure MASTER_CB's status output is different or managed. For this test, simple Div is fine.
             return html.Div(test_message)
     else:
-        callback_logger.error("CallbackManager: _APP_INSTANCE_REF_CB is None. Cannot register minimal diagnostic callback.")
+        callback_logger.error("CallbackManager: _APP_INSTANCE_REF_CB is None. Cannot register diagnostic_store_test_callback.")
 
     callback_logger.info("V2.4 Callback registration process finalized.")
